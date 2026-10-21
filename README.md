@@ -44,7 +44,9 @@ def _():
    is unreachable, MONEY and SECURITY bots refuse to run. Every `Action` they return
    waits for an approval, and the default answer is no: a human runs `approve <id>`, or
    the operator configures an approval policy on the `Runner` (a bot can never carry its
-   own approver). One approval performs the action at most once, even across concurrent
+   own approver). A run killed mid-action leaves its approval EXECUTING; it is never retried
+   automatically (it may have gone through), `pending` lists it as stuck and `release <id>`
+   hands it back to a human. One approval performs the action at most once, even across concurrent
    runners; if performing it fails, it needs a fresh approval. *Why:* the cost of a wrong
    payment or an unscoped scan is far larger than the cost of waiting.
 6. **Budgets on everything.** Every run has caps on actions, LLM calls and seconds.
@@ -80,6 +82,7 @@ python -m ultimate_nanobot promote examples.approval_payout:bot   # canary-gated
 python -m ultimate_nanobot run     examples.approval_payout:bot   # -> pending approval: <id>
 python -m ultimate_nanobot pending
 python -m ultimate_nanobot approve <id>
+python -m ultimate_nanobot release <id>                            # a claim stuck mid-action (see `pending`): back to a human
 python -m ultimate_nanobot run     examples.approval_payout:bot   # -> performed (exactly once)
 python -m ultimate_nanobot status                                  # fleet + liveness
 python -m ultimate_nanobot kill            # global kill switch (or: kill <bot>)

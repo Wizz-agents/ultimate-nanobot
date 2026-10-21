@@ -96,6 +96,14 @@ class Store(abc.ABC):
     @abc.abstractmethod
     def pending_approvals(self) -> list[dict]: ...
 
+    @abc.abstractmethod
+    def stuck_approvals(self, older_than_s: float, now: float) -> list[dict]:
+        """Approvals EXECUTING for longer than ``older_than_s``: a runner claimed them and never reported a result."""
+
+    @abc.abstractmethod
+    def release_approval(self, action_id: str, by: str, ts: float) -> bool:
+        """Atomically move EXECUTING -> FAILED (a fresh human approval is then needed). True only if it was EXECUTING."""
+
     # --- comms dedup / rate limit ---
     @abc.abstractmethod
     def reserve_send(
@@ -358,6 +366,24 @@ class SQLiteStore(Store):
         for r in rows:
             r["action"] = json.loads(r["action"])
         return rows
+
+    def stuck_approvals(self, older_than_s: float, now: float) -> list[dict]:
+        rows = self._exec(
+            "SELECT * FROM approvals WHERE status='EXECUTING' AND decided_at <= ? ORDER BY decided_at",
+            (now - older_than_s,),
+            "all",
+        )
+        for r in rows:
+            r["action"] = json.loads(r["action"])
+        return rows
+
+    def release_approval(self, action_id: str, by: str, ts: float) -> bool:
+        n = self._exec(
+            "UPDATE approvals SET status='FAILED', decided_at=?, decided_by=? WHERE action_id=? AND status='EXECUTING'",
+            (ts, by, action_id),
+            "rowcount",
+        )
+        return n == 1
 
     # comms
     def reserve_send(self, bot: str, key: str, ts: float, dedup_window_s: float, per_hour: int):

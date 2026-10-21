@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Stuck claims: an approval a runner claimed (EXECUTING) and never finished is listed by `pending` after 10 minutes and can be handed
+  back to a human with `release <id>` (`Runner.release`, `Runner.stuck_approvals`; `--force` skips the 10-minute minimum). It becomes FAILED, so
+  it needs a fresh `approve`. It is still never retried automatically. Third-party stores must implement `stuck_approvals` and `release_approval`.
+
 ### Fixed
 - A failed ledger write after `work()` no longer raises out of `run_once` after the actions were performed. It is escalated as
   `ledger_write_failed`, listed in `RunReport.bookkeeping_errors`, and the run keeps the verdict, heartbeat and store record the work earned

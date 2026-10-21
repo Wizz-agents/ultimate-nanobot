@@ -737,6 +737,32 @@ class Runner:
         self.store.decide_approval(action_id, "APPROVED", by, self.clock())
         return self.store.get_approval(action_id)
 
+    STUCK_AFTER_S = 600.0
+
+    def stuck_approvals(self, older_than_s: float = STUCK_AFTER_S) -> list[dict]:
+        """Approvals a runner claimed (EXECUTING) more than ``older_than_s`` ago and never finished: the runner may have died
+        mid-action. They are never retried automatically, because the action may have gone through."""
+        return self.store.stuck_approvals(older_than_s, self.clock())
+
+    def release(self, action_id: str, by: str = "cli", min_age_s: float = STUCK_AFTER_S) -> dict:
+        """Hand a stale EXECUTING claim back to a human: it becomes FAILED, so it needs a fresh ``approve`` before it can run again.
+        Check first whether the action actually happened. Refuses a claim younger than ``min_age_s`` (a live run may still be
+        performing it); pass ``min_age_s=0`` only when you know it is dead."""
+        row = self.store.get_approval(action_id)
+        if row is None:
+            raise KeyError(f"no approval request with id {action_id!r}")
+        if row["status"] != "EXECUTING":
+            raise ValueError(f"action {action_id} is {row['status']}; only an EXECUTING claim can be released")
+        age = self.clock() - float(row.get("decided_at") or 0.0)
+        if age < min_age_s:
+            raise ValueError(
+                f"action {action_id} was claimed {age:.0f}s ago; a live run may still be performing it "
+                f"(waits until {min_age_s:.0f}s, or release it with min_age_s=0 / --force once you know it is dead)"
+            )
+        if not self.store.release_approval(action_id, f"{by}:released", self.clock()):
+            raise ValueError(f"action {action_id} finished while it was being released")
+        return self.store.get_approval(action_id)
+
     def deny(self, action_id: str, by: str = "cli") -> dict:
         row = self.store.get_approval(action_id)
         if row is None:

@@ -127,12 +127,32 @@ def cmd_approve(args) -> int:
 
 
 def cmd_pending(args) -> int:
-    rows = _runner(args).store.pending_approvals()
-    if not rows:
+    runner = _runner(args)
+    rows = runner.store.pending_approvals()
+    stuck = runner.stuck_approvals(args.stuck_after)
+    if not rows and not stuck:
         print("no actions awaiting approval")
     for r in rows:
         a = r["action"]
         print(f"{r['action_id']}  {r['bot']}  {a.get('kind')}  {a.get('description') or json.dumps(a.get('payload'))}")
+    if stuck:
+        print(f"\nstuck: claimed more than {args.stuck_after:.0f}s ago and never finished (the runner may have died mid-action).")
+        print("Check whether each one happened, then `release <id>` and `approve <id>` again if it did not.")
+        for r in stuck:
+            a = r["action"]
+            age = runner.clock() - float(r["decided_at"] or 0.0)
+            print(f"{r['action_id']}  {r['bot']}  {a.get('kind')}  claimed {age:.0f}s ago")
+    return 0
+
+
+def cmd_release(args) -> int:
+    runner = _runner(args)
+    try:
+        row = runner.release(args.action_id, by=args.by, min_age_s=0.0 if args.force else runner.STUCK_AFTER_S)
+    except (KeyError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"{row['action_id']}: {row['status']} (needs a fresh `approve` before it can run again)")
     return 0
 
 
@@ -203,8 +223,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--by", default=os.environ.get("USER") or os.environ.get("USERNAME") or "cli")
     s.set_defaults(fn=cmd_approve)
 
-    s = sub.add_parser("pending", help="list actions awaiting approval")
+    s = sub.add_parser("pending", help="list actions awaiting approval, and claims stuck mid-action")
+    s.add_argument("--stuck-after", type=float, default=Runner.STUCK_AFTER_S, metavar="SECONDS",
+                   help="list a claim as stuck after this many seconds (default 600)")
     s.set_defaults(fn=cmd_pending)
+
+    s = sub.add_parser("release", help="hand a stuck EXECUTING claim back to a human (it then needs a fresh approve)")
+    s.add_argument("action_id")
+    s.add_argument("--force", action="store_true", help="release even if the claim is younger than 10 minutes")
+    s.add_argument("--by", default=os.environ.get("USER") or os.environ.get("USERNAME") or "cli")
+    s.set_defaults(fn=cmd_release)
 
     s = sub.add_parser("kill", help="kill switch on (one bot, or all)")
     s.add_argument("bot", nargs="?")
