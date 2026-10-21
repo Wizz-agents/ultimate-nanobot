@@ -146,6 +146,7 @@ class RunReport:
     duration_s: float = 0.0
     degraded: bool = False
     heartbeat: bool = False
+    bookkeeping_errors: list = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -353,7 +354,15 @@ class Runner:
             for k, v in kw.items():
                 setattr(report, k, v)
             report.duration_s = round(time.monotonic() - t0, 4)
-            self._write_ledger(bot, report, input, started, kw.get("llm_calls", 0))
+            try:
+                self._write_ledger(bot, report, input, started, kw.get("llm_calls", 0))
+            except Exception as exc:  # noqa: BLE001 - bookkeeping must not undo work whose actions may already have happened
+                note = f"ledger write failed: {type(exc).__name__}: {exc}"
+                report.bookkeeping_errors.append(note)
+                try:
+                    self.escalate(bot, "ledger_write_failed", note, run_id, verdict=verdict)
+                except Exception as inner:  # noqa: BLE001 - the failure path is down too: say it on stderr, still return
+                    print(f"[ultimate-nanobot] {bot.name}: {note}; escalation also failed: {inner}", file=sys.stderr)
             if use_store[0] and not report.degraded:
                 try:
                     self.store.record_run(bot.name, run_id, verdict, report.produced, self.clock())

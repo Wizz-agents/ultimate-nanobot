@@ -31,7 +31,9 @@ def _():
    earned; a heartbeat on failure is worse than silence.
 3. **Every failure has a path.** The runner catches every exception and escalates it
    to a sink (JSONL file, webhook or any callable); if the sink fails too, a fallback
-   file and stderr get it. A bot without a failure path cannot be registered.
+   file and stderr get it. A bot without a failure path cannot be registered. A failed ledger
+   write is escalated too (`ledger_write_failed`, `RunReport.bookkeeping_errors`) but never raised
+   out of a run whose actions already happened, and the verdict stays the work's.
    *Why:* swallowed exceptions are the root of most "it was dead and nobody knew".
 4. **Earn the right to run.** Bots move DISCOVERED -> CANDIDATE -> ENABLED / DISABLED,
    and only ENABLED bots act. Promotion needs a known-answer `canary()` that the

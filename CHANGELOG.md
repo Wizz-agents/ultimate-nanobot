@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- A failed ledger write after `work()` no longer raises out of `run_once` after the actions were performed. It is escalated as
+  `ledger_write_failed`, listed in `RunReport.bookkeeping_errors`, and the run keeps the verdict, heartbeat and store record the work earned
+  (a caller that retried a raised run would have performed the actions twice). If the failure path is down too, the note goes to stderr.
+
 ## [0.1.0] - 2026-10-14
 
 ### Hardened before release (adversarial review)
